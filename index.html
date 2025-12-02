@@ -933,6 +933,17 @@
       </div>
 
       <div class="admin-bloco">
+        <strong>Autorizações (ignorar limites por turma)</strong>
+        <small style="display:block;margin-top:2px;">Selecione a turma e marque as modalidades que devem ser autorizadas — quando marcada, a modalidade será aceita mesmo que os limites estejam preenchidos (aplica-se à QUEIMADA também).</small>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+          <select id="cfgAutTurma" style="min-width:220px;">
+            <option value="">Selecione a turma...</option>
+          </select>
+          <div id="cfgAutModalidadesContainer" style="flex:1;"></div>
+        </div>
+      </div>
+
+      <div class="admin-bloco">
         <strong>Texto do evento</strong>
         <div class="grid-2" style="margin-top:4px;">
           <div>
@@ -1095,7 +1106,8 @@ let configEvento = {
   bloquearAgora: false,
   nomeEvento: "Movimenta Odisseia",
   anoEvento: "",
-  textoInicial: ""
+  textoInicial: "",
+  autorizacoes: {} // estrutura: { turma: { "FUTSAL": true, "QUEIMADA MISTA": true, ... } }
 };
 
 let inscricoesEncerradas = false;
@@ -1201,11 +1213,13 @@ async function carregarConfiguracoes(){
       if (d.nomeEvento) configEvento.nomeEvento = d.nomeEvento;
       if (d.anoEdicao) configEvento.anoEvento = d.anoEdicao;
       if (d.textoInicial) configEvento.textoInicial = d.textoInicial;
+      if (d.autorizacoes) configEvento.autorizacoes = d.autorizacoes || {};
     }
   }catch(e){
     console.error("Erro ao carregar configurações:",e);
   }
 
+  // Atualiza campos da UI com config carregada
   document.getElementById("cfgDataLimite").value = configEvento.dataLimite || "";
   document.getElementById("cfgMsgEncerradas").value = configEvento.msgEncerradas || "";
   document.getElementById("cfgBloquearAgora").checked = !!configEvento.bloquearAgora;
@@ -1228,6 +1242,9 @@ async function carregarConfiguracoes(){
   } else if (configEvento.nomeEvento && configEvento.anoEvento){
     document.getElementById("subEvento").textContent = "Inscrições para o " + configEvento.nomeEvento + " " + configEvento.anoEvento;
   }
+
+  // carregar autorizações na UI (se houver)
+  atualizarAutorizacoesUI();
 
   atualizarStatusInscricoes();
   atualizarDisponibilidadeModalidades();
@@ -1268,6 +1285,14 @@ async function salvarConfiguracoes(){
     "VOLEI": limVolei
   };
 
+  // coletar autorizações (estado atual da UI)
+  const autorizacoes = {};
+  const selTurmaAut = document.getElementById("cfgAutTurma");
+  if (selTurmaAut){
+    // vamos usar configEvento.autorizacoes já mantida no código
+    // antes de salvar, atualizamos configEvento.autorizacoes a partir da UI geral
+    // para simplicidade, usamos configEvento.autorizacoes atual (a UI já sincroniza ao selecionar turma)
+  }
   try{
     await db.collection("config").doc("geral").set({
       dataLimiteInscricao: dataLimite || null,
@@ -1279,7 +1304,8 @@ async function salvarConfiguracoes(){
       limitesModalidadeTurma: limitesModalidadeTurma,
       nomeEvento: nomeEvento,
       anoEdicao: anoEvento,
-      textoInicial: textoInicial
+      textoInicial: textoInicial,
+      autorizacoes: configEvento.autorizacoes || {}
     }, { merge:true });
 
     configEvento.dataLimite = dataLimite || null;
@@ -1307,6 +1333,60 @@ async function salvarConfiguracoes(){
   }
 }
 
+/* ========== AUTORIZAÇÕES UI (novidade) ========== */
+
+function atualizarAutorizacoesUI(){
+  // popula select de turmas no bloco de autorizações
+  const sel = document.getElementById("cfgAutTurma");
+  const cont = document.getElementById("cfgAutModalidadesContainer");
+  if (!sel || !cont) return;
+  sel.innerHTML = '<option value="">Selecione a turma...</option>';
+  TODAS_TURMAS.forEach(t => {
+    const o = document.createElement("option");
+    o.value = t; o.textContent = t;
+    sel.appendChild(o);
+  });
+
+  // construir checkboxes de modalidades (apenas uma vez)
+  cont.innerHTML = "";
+  MODALIDADES.forEach(m => {
+    const id = "cfgAutChk_" + m.replace(/\s+/g,"_");
+    const wrapper = document.createElement("label");
+    wrapper.style.marginRight = "10px";
+    wrapper.style.fontSize = "0.9rem";
+    wrapper.style.display = "inline-flex";
+    wrapper.style.alignItems = "center";
+    wrapper.style.gap = "6px";
+    const chk = document.createElement("input");
+    chk.type = "checkbox";
+    chk.id = id;
+    chk.dataset.mod = m;
+    chk.className = "cfgAutChk";
+    wrapper.appendChild(chk);
+    const span = document.createElement("span");
+    span.textContent = "Permitir " + m;
+    wrapper.appendChild(span);
+    cont.appendChild(wrapper);
+  });
+
+  // quando selecionar turma, preencher checkboxes com configEvento.autorizacoes[turma]
+  sel.addEventListener("change", () => {
+    const turma = sel.value;
+    const autorz = (configEvento.autorizacoes && configEvento.autorizacoes[turma]) || {};
+    const chks = document.querySelectorAll(".cfgAutChk");
+    chks.forEach(chk => {
+      const mod = chk.dataset.mod;
+      chk.checked = !!autorz[mod];
+      // escuta alteração para atualizar configEvento em tempo real
+      chk.onchange = () => {
+        if (!configEvento.autorizacoes) configEvento.autorizacoes = {};
+        if (!configEvento.autorizacoes[turma]) configEvento.autorizacoes[turma] = {};
+        configEvento.autorizacoes[turma][mod] = chk.checked ? true : false;
+      };
+    });
+  });
+}
+
 /* ========== DISPONIBILIDADE MODALIDADES ========== */
 
 function atualizarDisponibilidadeModalidades(){
@@ -1322,17 +1402,21 @@ function atualizarDisponibilidadeModalidades(){
       span.classList.remove("modalidade-lotado");
       return;
     }
+
+    // se autorizado para essa turma/ modalidade -> mostrar "AUTORIZADO"
+    const autorizada = !!(configEvento.autorizacoes && configEvento.autorizacoes[turma] && configEvento.autorizacoes[turma][mod]);
+
     if (mod === "QUEIMADA MISTA"){
       const tot = (countsPorTurmaModalidade[turma] && countsPorTurmaModalidade[turma][mod]) || 0;
       const gen = countsQueimadaGenero[turma] || {Masculino:0, Feminino:0};
-      span.textContent = mod + " ("+tot+"/"+LIMITE_QUEIMADA_TOTAL+" / Meninos: "+gen.Masculino+"/"+LIMITE_QUEIMADA_POR_SEXO+" / Meninas: "+gen.Feminino+"/"+LIMITE_QUEIMADA_POR_SEXO+")";
-      if (tot >= LIMITE_QUEIMADA_TOTAL) span.classList.add("modalidade-lotado");
+      span.textContent = mod + " ("+tot+"/"+LIMITE_QUEIMADA_TOTAL+" / Meninos: "+gen.Masculino+"/"+LIMITE_QUEIMADA_POR_SEXO+" / Meninas: "+gen.Feminino+"/"+LIMITE_QUEIMADA_POR_SEXO+")" + (autorizada ? " — AUTORIZADO" : "");
+      if (tot >= LIMITE_QUEIMADA_TOTAL && !autorizada) span.classList.add("modalidade-lotado");
       else span.classList.remove("modalidade-lotado");
     } else {
       const lim = LIMITE_MODALIDADE_TURMA[mod] || 0;
       const qtd = (countsPorTurmaModalidade[turma] && countsPorTurmaModalidade[turma][mod]) || 0;
-      span.textContent = mod + " ("+qtd+"/"+lim+" vagas)";
-      if (qtd >= lim) span.classList.add("modalidade-lotado");
+      span.textContent = mod + " ("+qtd+"/"+lim+" vagas)" + (autorizada ? " — AUTORIZADO" : "");
+      if (qtd >= lim && !autorizada) span.classList.add("modalidade-lotado");
       else span.classList.remove("modalidade-lotado");
     }
   });
@@ -1344,23 +1428,26 @@ function atualizarDisponibilidadeModalidades(){
       chk.checked = false;
       return;
     }
+
+    const autorizada = !!(configEvento.autorizacoes && configEvento.autorizacoes[turma] && configEvento.autorizacoes[turma][mod]);
+
     if (mod === "QUEIMADA MISTA"){
       const tot = (countsPorTurmaModalidade[turma] && countsPorTurmaModalidade[turma][mod]) || 0;
       const gen = countsQueimadaGenero[turma] || {Masculino:0, Feminino:0};
-      if (!sexo || tot >= LIMITE_QUEIMADA_TOTAL){
+      if (!sexo || (tot >= LIMITE_QUEIMADA_TOTAL && !autorizada)){
         chk.disabled = true; chk.checked = false; return;
       }
-      if (sexo === "Masculino" && gen.Masculino >= LIMITE_QUEIMADA_POR_SEXO){
+      if (sexo === "Masculino" && gen.Masculino >= LIMITE_QUEIMADA_POR_SEXO && !autorizada){
         chk.disabled = true; chk.checked = false; return;
       }
-      if (sexo === "Feminino" && gen.Feminino >= LIMITE_QUEIMADA_POR_SEXO){
+      if (sexo === "Feminino" && gen.Feminino >= LIMITE_QUEIMADA_POR_SEXO && !autorizada){
         chk.disabled = true; chk.checked = false; return;
       }
       chk.disabled = false;
     } else {
       const lim = LIMITE_MODALIDADE_TURMA[mod] || 0;
       const qtd = (countsPorTurmaModalidade[turma] && countsPorTurmaModalidade[turma][mod]) || 0;
-      if (qtd >= lim){
+      if (qtd >= lim && !autorizada){
         chk.disabled = true; chk.checked = false;
       } else {
         chk.disabled = false;
@@ -1376,6 +1463,13 @@ async function handleSubmitInscricao(e){
   if (inscricoesEncerradas){
     msgForm(configEvento.msgEncerradas || "As inscrições foram encerradas.", false);
     return;
+  }
+  // primeiro tente emailAtual -> localStorage fallback
+  if (!emailAtual){
+    try{
+      const fromStorage = localStorage.getItem('insc_email');
+      if (validarEmail(fromStorage)) emailAtual = fromStorage;
+    }catch(e){}
   }
   if (!emailAtual || !validarEmail(emailAtual)){
     alert("Informe um e-mail válido antes de se inscrever.");
@@ -1414,7 +1508,12 @@ async function handleSubmitInscricao(e){
     }
   }
 
+  // verificação por modalidade com consideração de autorizações
   for (const mod of mods){
+    // se existe autorização para a turma/mod => pular validação
+    const autorizada = !!(configEvento.autorizacoes && configEvento.autorizacoes[turma] && configEvento.autorizacoes[turma][mod]);
+    if (autorizada) continue;
+
     if (mod === "QUEIMADA MISTA"){
       const tot = (countsPorTurmaModalidade[turma] && countsPorTurmaModalidade[turma][mod]) || 0;
       const gen = countsQueimadaGenero[turma] || {Masculino:0,Feminino:0};
@@ -1447,7 +1546,7 @@ async function handleSubmitInscricao(e){
       camisaNumero: camisaNumero || null,
       modalidades: mods,
       observacoes: observacoes || null,
-      naoAutorizadoPor: [], // NOVO: indicações de professores
+      naoAutorizadoPor: [], // indicações de professores
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
     });
     msgForm("Inscrição realizada com sucesso! ✅", true);
@@ -2559,26 +2658,42 @@ function iniciarListeners(){
 /* ========== INIT ========== */
 
 function init(){
+  // Overlay fallback: se já houver e-mail em localStorage, fecha imediatamente
+  try {
+    const saved = localStorage.getItem('insc_email');
+    if (saved && saved.includes('@')){
+      emailAtual = saved;
+      const ov = document.getElementById('emailOverlay');
+      if (ov) ov.style.display = 'none';
+    }
+  } catch(e){ /* ignore */ }
+
   const overlay = document.getElementById("emailOverlay");
   const emailInput = document.getElementById("emailAluno");
   const msgEmail = document.getElementById("msgEmailOverlay");
 
   function liberarEmail(){
-    const val = (emailInput.value || "").trim();
+    const val = (emailInput.value || '').trim();
     if (!validarEmail(val)){
       msgEmail.textContent = "Digite um e-mail válido.";
       return;
     }
     emailAtual = val;
-    overlay.style.display = "none";
+    try { localStorage.setItem('insc_email', val); } catch(e){}
+    // definir fallback global também (caso outros scripts precisem)
+    try { window._inscricao_email_fallback = val; } catch(e){}
+    if (overlay) overlay.style.display = "none";
   }
-  document.getElementById("btnEntrarEmail").addEventListener("click", liberarEmail);
-  emailInput.addEventListener("keydown", e => {
-    if (e.key === "Enter"){
-      e.preventDefault();
-      liberarEmail();
-    }
-  });
+  const btnEntrar = document.getElementById("btnEntrarEmail");
+  if (btnEntrar) btnEntrar.addEventListener("click", liberarEmail);
+  if (emailInput){
+    emailInput.addEventListener("keydown", e => {
+      if (e.key === "Enter"){
+        e.preventDefault();
+        liberarEmail();
+      }
+    });
+  }
 
   const contMods = document.getElementById("modalidadesContainer");
   MODALIDADES.forEach(m => {
