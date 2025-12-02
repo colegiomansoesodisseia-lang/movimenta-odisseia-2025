@@ -415,7 +415,8 @@
       #tab-config,
       #btnFecharAdmin,
       #tab-relatorio .admin-bloco,
-      #btnImprimirRelatorio {
+      #btnImprimirRelatorio,
+      #btnImprimirTodaTurma {
         display: none !important;
       }
 
@@ -817,8 +818,9 @@
           <h3 id="relatorioTituloLinha1">Relatório de inscritos – Movimenta Odisseia</h3>
           <small id="relatorioTituloLinha2">Selecione turno, turma e modalidade para gerar o relatório.</small>
         </div>
-        <div style="margin-top:6px; display:flex; justify-content:flex-end;">
+        <div style="margin-top:6px; display:flex; justify-content:flex-end; gap:8px;">
           <button class="btn btn-primaria" id="btnImprimirRelatorio">🖨️ Imprimir</button>
+          <button class="btn btn-primaria" id="btnImprimirTodaTurma">🖨️ Imprimir Toda Turma</button>
         </div>
       </div>
 
@@ -1399,6 +1401,7 @@ function atualizarDisponibilidadeModalidades(){
     const mod = span.dataset.mod;
     if (!turma){
       span.textContent = mod + " (selecione turno e turma)";
+
       span.classList.remove("modalidade-lotado");
       return;
     }
@@ -1796,6 +1799,88 @@ function renderRelatorio(){
     tdTurma.textContent = ins.turma || "";
     tdTurno.textContent = ins.turno || "";
     tdModalidades.textContent = modalidade;
+    tdEmail.textContent = ins.email || "";
+    tdCamisa.textContent = ins.camisaNumero || "";
+    tdObs.textContent = ins.observacoes || "";
+
+    tr.appendChild(tdNome);
+    tr.appendChild(tdSexo);
+    tr.appendChild(tdTurma);
+    tr.appendChild(tdTurno);
+    tr.appendChild(tdModalidades);
+    tr.appendChild(tdEmail);
+    tr.appendChild(tdCamisa);
+    tr.appendChild(tdObs);
+
+    tbody.appendChild(tr);
+  });
+}
+
+/* NOVA FUNÇÃO: Relatório de TODA TURMA (todas as modalidades) */
+function renderRelatorioTodaTurma(){
+  const tbody = document.querySelector("#tabelaRelatorio tbody");
+  const turnoEl = document.getElementById("relatorioTurno");
+  const turmaEl = document.getElementById("relatorioTurma");
+  const tituloLinha1 = document.getElementById("relatorioTituloLinha1");
+  const tituloLinha2 = document.getElementById("relatorioTituloLinha2");
+
+  if (!tbody || !turnoEl || !turmaEl) return;
+
+  const turno = turnoEl.value;
+  const turma = turmaEl.value;
+
+  tbody.innerHTML = "";
+  tituloLinha1.textContent = "Relatório completo da turma – " + (configEvento.nomeEvento || "Movimenta Odisseia");
+
+  if (!turno || !turma){
+    tituloLinha2.textContent = "Selecione turno e turma para gerar o relatório da turma inteira.";
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.textContent = "Selecione turno e turma para gerar o relatório da turma inteira.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  let lista = todasInscricoes.filter(ins => {
+    if (ins.turno !== turno) return false;
+    if (ins.turma !== turma) return false;
+    return true;
+  });
+
+  lista = lista.slice().sort((a,b) => (a.nome || "").localeCompare(b.nome || "","pt-BR"));
+
+  if (!lista.length){
+    tituloLinha2.textContent = `Turno: ${turno} | Turma: ${turma} – Total: 0 inscritos.`;
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 8;
+    td.textContent = "Nenhuma inscrição nesta turma.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  tituloLinha2.textContent = `Turno: ${turno} | Turma: ${turma} – Total: ${lista.length} inscrito(s).`;
+
+  lista.forEach(ins => {
+    const tr = document.createElement("tr");
+
+    const tdNome = document.createElement("td");
+    const tdSexo = document.createElement("td");
+    const tdTurma = document.createElement("td");
+    const tdTurno = document.createElement("td");
+    const tdModalidades = document.createElement("td");
+    const tdEmail = document.createElement("td");
+    const tdCamisa = document.createElement("td");
+    const tdObs = document.createElement("td");
+
+    tdNome.textContent = ins.nome || "";
+    tdSexo.textContent = ins.sexo || "";
+    tdTurma.textContent = ins.turma || "";
+    tdTurno.textContent = ins.turno || "";
+    tdModalidades.textContent = (ins.modalidades || []).join(", ");
     tdEmail.textContent = ins.email || "";
     tdCamisa.textContent = ins.camisaNumero || "";
     tdObs.textContent = ins.observacoes || "";
@@ -2864,6 +2949,17 @@ function init(){
   const btnImprimirRelatorio = document.getElementById("btnImprimirRelatorio");
   if (btnImprimirRelatorio){
     btnImprimirRelatorio.addEventListener("click", () => {
+      // renderRelatorio() já atualiza a tabela com base nos selects
+      renderRelatorio();
+      window.print();
+    });
+  }
+
+  const btnImprimirTodaTurma = document.getElementById("btnImprimirTodaTurma");
+  if (btnImprimirTodaTurma){
+    btnImprimirTodaTurma.addEventListener("click", () => {
+      // renderiza relatório completo da turma (todas as modalidades)
+      renderRelatorioTodaTurma();
       window.print();
     });
   }
