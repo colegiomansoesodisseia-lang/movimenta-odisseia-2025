@@ -1017,13 +1017,8 @@
 <script>
 "use strict";
 
-/* ========== FIREBASE ========== */
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+/* ========== FIREBASE (COMPAT – CORRETO) ========== */
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBhrv2QHr1EFgw8F-NXSetV7p10E4E4DzY",
   authDomain: "movimenta-odisseia-26.firebaseapp.com",
@@ -1033,8 +1028,11 @@ const firebaseConfig = {
   appId: "1:118016114314:web:d8301e3401d71c419c3773"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Inicializa Firebase (COMPAT)
+firebase.initializeApp(firebaseConfig);
+
+// Firestore
+const db = firebase.firestore();
 
 /* ========== CONSTANTES ========== */
 
@@ -3114,4 +3112,5 @@ if (document.readyState === "loading"){
 
 </body>
 </html>
+
 
